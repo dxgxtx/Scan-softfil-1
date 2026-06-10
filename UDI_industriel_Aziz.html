@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<title>Scan UDI Industriel - Aziz</title>
+<script src="https://unpkg.com/html5-qrcode"></script>
+<style>
+body{font-family:Arial;text-align:center;background:#f4f6f9}
+#reader{width:320px;margin:auto}
+.card{background:white;padding:20px;margin-top:20px;border-radius:12px;box-shadow:0 2px 6px rgba(0,0,0,.1)}
+.footer{margin-top:20px;color:gray}
+button{padding:10px 20px;margin-top:10px;border:none;border-radius:8px;background:#2c3e50;color:#fff}
+</style>
+</head>
+<body>
+<h2>📷 Scanner UDI Industriel</h2>
+<p><b>Application développée par Aziz</b></p>
+<div id="reader"></div>
+<button onclick="location.reload()">🔄 Nouveau scan</button>
+<div class="card" id="result" style="display:none">
+<div id="gtin"></div>
+<div id="lot"></div>
+<div id="exp"></div>
+<div id="serial"></div>
+<div id="ref"></div>
+</div>
+<div class="footer">© Aziz - UDI industriel</div>
+<script>
+const database=[
+{ref:"CP1490/XL",lot:"1912S0015",gtin:"01117101912"},
+{ref:"CP1690/XL",lot:"1912S0016",gtin:"01117101912"}
+];
+function parseGS1(data){
+let r={};
+let gtin=data.match(/01(\d{14})/);
+let lot=data.match(/10([A-Z0-9]+)/);
+let exp=data.match(/17(\d{6})/);
+let ser=data.match(/21([A-Z0-9]+)/);
+if(gtin) r.gtin=gtin[1];
+if(lot) r.lot=lot[1];
+if(exp) r.exp=exp[1];
+if(ser) r.serial=ser[1];
+return r;
+}
+function findProduct(p){
+return database.find(x=>x.lot===p.lot)||null;
+}
+function onScanSuccess(code){
+let parsed=parseGS1(code);
+let prod=findProduct(parsed);
+document.getElementById('result').style.display='block';
+document.getElementById('gtin').innerText='GTIN: '+(parsed.gtin||'-');
+document.getElementById('lot').innerText='LOT: '+(parsed.lot||'-');
+document.getElementById('serial').innerText='Serial: '+(parsed.serial||'-');
+document.getElementById('exp').innerText='Expiration: '+(parsed.exp||'-');
+document.getElementById('ref').innerText=prod?('Référence: '+prod.ref):'Produit non trouvé';
+}
+let scanner=new Html5QrcodeScanner('reader',{fps:10,qrbox:250,formatsToSupport:[Html5QrcodeSupportedFormats.DATA_MATRIX]});
+scanner.render(onScanSuccess);
+</script>
+</body>
+</html>
