@@ -7,8 +7,8 @@
 
 <style>
 body{font-family:Arial,sans-serif;text-align:center;background:#f4f6f9;margin:20px}
-.logo{max-width:360px;width:80%;margin:10px auto 20px;display:block}
-.logo-fallback{font-size:42px;font-weight:bold;color:#ff6600;margin:15px}
+.logo{max-width:350px;width:80%;margin:10px auto 20px;display:block}
+.logo-fallback{font-size:42px;font-weight:bold;color:#f26b21;margin:15px}
 #reader{width:320px;margin:auto}
 .card{background:white;max-width:750px;margin:20px auto;padding:20px;border-radius:12px;box-shadow:0 2px 10px rgba(0,0,0,.1)}
 button{padding:12px 25px;margin:10px;border:none;border-radius:8px;background:#2c3e50;color:white;cursor:pointer;font-size:16px}
@@ -20,8 +20,8 @@ button{padding:12px 25px;margin:10px;border:none;border-radius:8px;background:#2
 
 <body>
 
-<img src="./softfil-orange.webp" class="logo" alt="SoftFil Logo"
-onerror="this.style.display='none'; document.getElementById('logoFallback').style.display='block';">
+<img src="softfil-orange.webp" class="logo" alt="SoftFil Logo"
+onerror="this.style.display='none';document.getElementById('logoFallback').style.display='block';">
 
 <div id="logoFallback" class="logo-fallback" style="display:none;">SoftFil</div>
 
@@ -52,18 +52,18 @@ let database = [];
 let lastProduct = null;
 let counters = {};
 
-function clean(value){
-    return String(value || "")
-        .replace(/\u001d/g,"")
-        .replace(/[^A-Za-z0-9\/]/g,"")
-        .toUpperCase()
-        .trim();
-}
-
 function cleanAlpha(value){
     return String(value || "")
         .replace(/\u001d/g,"")
         .replace(/[^A-Za-z0-9]/g,"")
+        .toUpperCase()
+        .trim();
+}
+
+function cleanRef(value){
+    return String(value || "")
+        .replace(/\u001d/g,"")
+        .replace(/[^A-Za-z0-9\/]/g,"")
         .toUpperCase()
         .trim();
 }
@@ -73,27 +73,28 @@ function formatDateYYMMDD(value){
     return value.substring(4,6) + "/" + value.substring(2,4) + "/20" + value.substring(0,2);
 }
 
-function extractGTIN(udi){
+function parseUDI(udi){
     const value = cleanAlpha(udi);
-    const match = value.match(/01(\d{14})/);
-    return match ? match[1] : "";
-}
 
-function extractDateFabrication(udi){
-    const value = cleanAlpha(udi);
-    const match = value.match(/11(\d{6})/);
-    return match ? formatDateYYMMDD(match[1]) : "";
-}
+    const match = value.match(/01(\d{14})11(\d{6})17(\d{6})10(.+)$/);
 
-function extractDateExpiration(udi){
-    const value = cleanAlpha(udi);
-    const match = value.match(/17(\d{6})/);
-    return match ? formatDateYYMMDD(match[1]) : "";
-}
+    if(match){
+        return {
+            gtin: match[1],
+            mfg: formatDateYYMMDD(match[2]),
+            exp: formatDateYYMMDD(match[3]),
+            lot: match[4],
+            udi: value
+        };
+    }
 
-function extractLOT(udi){
-    const value = cleanAlpha(udi);
-    return value.slice(-9);
+    return {
+        gtin: "",
+        mfg: "",
+        exp: "",
+        lot: "",
+        udi: value
+    };
 }
 
 function splitCSV(line){
@@ -106,7 +107,7 @@ function splitCSV(line){
     );
 }
 
-fetch("./data.csv")
+fetch("data.csv")
 .then(r => r.text())
 .then(text => {
     const lines = text.trim().split(/\r?\n/);
@@ -115,9 +116,9 @@ fetch("./data.csv")
         const cols = splitCSV(line);
 
         return {
-            ref : clean(cols[0]),
-            lot : cleanAlpha(cols[1]),
-            udi : cleanAlpha(cols[2])
+            ref: cleanRef(cols[0]),
+            lot: cleanAlpha(cols[1]),
+            udi: cleanAlpha(cols[2])
         };
     });
 
@@ -131,44 +132,42 @@ fetch("./data.csv")
 });
 
 function onScanSuccess(decodedText){
-    const scannedUDI = cleanAlpha(decodedText);
-    const scannedGTIN = extractGTIN(decodedText);
-    const scannedLOT = extractLOT(decodedText);
-    const scannedMFG = extractDateFabrication(decodedText);
-    const scannedEXP = extractDateExpiration(decodedText);
+    const parsed = parseUDI(decodedText);
 
-    const product = database.find(p =>
-        p.lot === scannedLOT ||
-        cleanAlpha(p.udi).includes(scannedLOT)
-    );
+    let product = database.find(p => p.lot === parsed.lot);
+
+    if(!product){
+        product = database.find(p => parsed.udi.includes(p.lot));
+        if(product && !parsed.lot) parsed.lot = product.lot;
+    }
 
     if(product){
         lastProduct = {
-            ref : product.ref,
-            lot : scannedLOT,
-            gtin : scannedGTIN,
-            mfg : scannedMFG,
-            exp : scannedEXP,
-            udi : scannedUDI
+            ref: product.ref,
+            lot: parsed.lot || product.lot,
+            gtin: parsed.gtin,
+            mfg: parsed.mfg,
+            exp: parsed.exp,
+            udi: parsed.udi
         };
 
         document.getElementById("ref").innerHTML =
-            "<strong>Référence :</strong> " + product.ref;
+            "<strong>Référence :</strong> " + lastProduct.ref;
 
         document.getElementById("gtin").innerHTML =
-            "<strong>GTIN :</strong> " + scannedGTIN;
+            "<strong>GTIN :</strong> " + lastProduct.gtin;
 
         document.getElementById("lot").innerHTML =
-            "<strong>LOT :</strong> " + scannedLOT;
+            "<strong>LOT :</strong> " + lastProduct.lot;
 
         document.getElementById("mfg").innerHTML =
-            "<strong>Date de fabrication :</strong> " + scannedMFG;
+            "<strong>Date de fabrication :</strong> " + lastProduct.mfg;
 
         document.getElementById("exp").innerHTML =
-            "<strong>Date de péremption :</strong> " + scannedEXP;
+            "<strong>Date de péremption :</strong> " + lastProduct.exp;
 
         document.getElementById("udi").innerHTML =
-            "<strong>UDI scanné :</strong><br>" + scannedUDI;
+            "<strong>UDI scanné :</strong><br>" + lastProduct.udi;
 
         document.getElementById("count").innerHTML =
             "Produit prêt à valider";
@@ -180,19 +179,19 @@ function onScanSuccess(decodedText){
             "❌ Référence non trouvée";
 
         document.getElementById("gtin").innerHTML =
-            "<strong>GTIN :</strong> " + scannedGTIN;
+            "<strong>GTIN :</strong> " + parsed.gtin;
 
         document.getElementById("lot").innerHTML =
-            "<strong>LOT :</strong> " + scannedLOT;
+            "<strong>LOT :</strong> " + parsed.lot;
 
         document.getElementById("mfg").innerHTML =
-            "<strong>Date de fabrication :</strong> " + scannedMFG;
+            "<strong>Date de fabrication :</strong> " + parsed.mfg;
 
         document.getElementById("exp").innerHTML =
-            "<strong>Date de péremption :</strong> " + scannedEXP;
+            "<strong>Date de péremption :</strong> " + parsed.exp;
 
         document.getElementById("udi").innerHTML =
-            "<strong>UDI scanné :</strong><br>" + scannedUDI;
+            "<strong>UDI scanné :</strong><br>" + parsed.udi;
 
         document.getElementById("count").innerHTML = "";
     }
@@ -208,11 +207,11 @@ function validateScan(){
 
     if(!counters[key]){
         counters[key] = {
-            ref : lastProduct.ref,
-            lot : lastProduct.lot,
-            gtin : lastProduct.gtin,
-            exp : lastProduct.exp,
-            count : 0
+            ref: lastProduct.ref,
+            lot: lastProduct.lot,
+            gtin: lastProduct.gtin,
+            exp: lastProduct.exp,
+            count: 0
         };
     }
 
