@@ -6,12 +6,61 @@
 <script src="https://unpkg.com/html5-qrcode"></script>
 
 <style>
-body{font-family:Arial;text-align:center;background:#f4f6f9}
-#reader{width:320px;margin:auto}
-.card{background:white;max-width:650px;margin:20px auto;padding:20px;border-radius:12px}
-button{padding:10px 20px;margin:5px;border:none;border-radius:8px;background:#2c3e50;color:white}
-.line{font-size:18px;margin:10px}
-.item{background:#eee;margin:5px;padding:8px;border-radius:6px}
+
+body{
+    font-family:Arial,sans-serif;
+    text-align:center;
+    background:#f4f6f9;
+    margin:20px;
+}
+
+#reader{
+    width:320px;
+    margin:auto;
+}
+
+.card{
+    background:white;
+    max-width:700px;
+    margin:20px auto;
+    padding:20px;
+    border-radius:12px;
+    box-shadow:0 2px 10px rgba(0,0,0,.1);
+}
+
+button{
+    padding:12px 25px;
+    margin:10px;
+    border:none;
+    border-radius:8px;
+    background:#2c3e50;
+    color:white;
+    cursor:pointer;
+    font-size:16px;
+}
+
+button:hover{
+    background:#34495e;
+}
+
+.line{
+    margin:10px;
+    font-size:18px;
+}
+
+.count{
+    font-size:24px;
+    font-weight:bold;
+    color:#27ae60;
+}
+
+.item{
+    background:#ecf0f1;
+    margin:5px;
+    padding:10px;
+    border-radius:8px;
+}
+
 </style>
 </head>
 
@@ -21,162 +70,285 @@ button{padding:10px 20px;margin:5px;border:none;border-radius:8px;background:#2c
 
 <div id="reader"></div>
 
-<div class="card" id="result">
-    <div class="line" id="status">Chargement de la base...</div>
-    <div class="line" id="ref"></div>
-    <div class="line" id="lot"></div>
-    <div class="line" id="gtin"></div>
-    <div class="line" id="udi"></div>
+<button onclick="validateScan()">✅ Valider</button>
+
+<div class="card">
+
+<div id="status">Chargement de la base...</div>
+
+<div class="line" id="ref"></div>
+
+<div class="line" id="lot"></div>
+
+<div class="line" id="gtin"></div>
+
+<div class="line" id="udi"></div>
+
+<div class="count" id="count"></div>
+
 </div>
 
 <div class="card">
-    <h3>📊 Historique</h3>
-    <div id="history"></div>
+
+<h3>📊 Comptage</h3>
+
+<div id="history"></div>
+
 </div>
 
 <script>
+
 let database = [];
+let lastProduct = null;
+let counters = {};
 
 function clean(value){
+
     return String(value || "")
-        .replace(/\u001d/g, "")
-        .replace(/[^A-Za-z0-9/]/g, "")
+        .replace(/\u001d/g,"")
+        .replace(/[^A-Za-z0-9\/]/g,"")
         .toUpperCase()
         .trim();
+
 }
 
-function cleanOnlyAlphaNum(value){
+function cleanAlpha(value){
+
     return String(value || "")
-        .replace(/\u001d/g, "")
-        .replace(/[^A-Za-z0-9]/g, "")
+        .replace(/\u001d/g,"")
+        .replace(/[^A-Za-z0-9]/g,"")
         .toUpperCase()
         .trim();
+
 }
 
-// GTIN = 14 chiffres après 01
 function extractGTIN(udi){
-    const value = cleanOnlyAlphaNum(udi);
+
+    const value = cleanAlpha(udi);
+
     const match = value.match(/01(\d{14})/);
+
     return match ? match[1] : "";
+
 }
 
-// LOT = ce qui vient après AI 10
 function extractLOT(udi){
-    const value = cleanOnlyAlphaNum(udi);
-    const index = value.indexOf("10", 16);
 
-    if(index !== -1){
-        return value.substring(index + 2);
+    const value = cleanAlpha(udi);
+
+    const pos10 = value.indexOf("10",16);
+
+    if(pos10 !== -1){
+
+        return value.substring(pos10 + 2);
+
     }
 
     return "";
+
 }
 
-// Détection automatique du séparateur CSV
-function splitCSVLine(line){
-    let separator = ",";
+function splitCSV(line){
 
-    if(line.includes(";")) separator = ";";
-    else if(line.includes("\t")) separator = "\t";
+    let sep=",";
 
-    return line.split(separator).map(v =>
-        v.trim().replace(/^"|"$/g, "")
-    );
+    if(line.includes(";")) sep=";";
+    if(line.includes("\t")) sep="\t";
+
+    return line.split(sep)
+        .map(x => x.trim().replace(/^"|"$/g,""));
+
 }
 
-// Chargement du fichier data.csv
 fetch("data.csv")
-.then(response => {
-    if(!response.ok){
-        throw new Error("data.csv introuvable");
-    }
-    return response.text();
-})
+.then(r => r.text())
 .then(text => {
+
     const lines = text.trim().split(/\r?\n/);
 
     database = lines.slice(1).map(line => {
-        const cols = splitCSVLine(line);
+
+        const cols = splitCSV(line);
 
         return {
-            ref: clean(cols[0]),
-            lot: cleanOnlyAlphaNum(cols[1]),
-            udi: cleanOnlyAlphaNum(cols[2]),
-            gtin: extractGTIN(cols[2])
+
+            ref : clean(cols[0]),
+            lot : cleanAlpha(cols[1]),
+            udi : cleanAlpha(cols[2])
+
         };
+
     });
 
     document.getElementById("status").innerHTML =
-        "✅ Base chargée : " + database.length + " lignes";
+        "✅ Base chargée : " + database.length + " références";
 
-    console.log("BASE CSV =", database);
+    console.log(database);
+
 })
 .catch(error => {
+
     document.getElementById("status").innerHTML =
-        "❌ Erreur : impossible de charger data.csv";
+        "❌ Impossible de charger data.csv";
+
     console.error(error);
+
 });
 
 function onScanSuccess(decodedText){
-    const scannedUDI = cleanOnlyAlphaNum(decodedText);
+
+    const scannedUDI = cleanAlpha(decodedText);
+
     const scannedGTIN = extractGTIN(scannedUDI);
+
     const scannedLOT = extractLOT(scannedUDI);
 
-    document.getElementById("udi").innerHTML =
-        "<strong>UDI scanné :</strong> " + scannedUDI;
-
-    document.getElementById("gtin").innerHTML =
-        "<strong>GTIN :</strong> " + (scannedGTIN || "Non trouvé");
-
-    document.getElementById("lot").innerHTML =
-        "<strong>LOT :</strong> " + (scannedLOT || "Non trouvé");
-
     const product = database.find(p =>
-        p.udi === scannedUDI ||
-        p.lot === scannedLOT ||
-        p.gtin === scannedGTIN
+
+        p.lot === scannedLOT
+
+        ||
+
+        cleanAlpha(p.udi).includes(scannedLOT)
+
     );
 
     if(product){
+
+        lastProduct = {
+
+            ref : product.ref,
+            lot : scannedLOT,
+            gtin : scannedGTIN,
+            udi : scannedUDI
+
+        };
+
         document.getElementById("ref").innerHTML =
             "<strong>Référence :</strong> " + product.ref;
 
         document.getElementById("lot").innerHTML =
-            "<strong>LOT :</strong> " + product.lot;
+            "<strong>LOT :</strong> " + scannedLOT;
 
         document.getElementById("gtin").innerHTML =
-            "<strong>GTIN :</strong> " + product.gtin;
+            "<strong>GTIN :</strong> " + scannedGTIN;
 
         document.getElementById("udi").innerHTML =
-            "<strong>UDI :</strong> " + product.udi;
+            "<strong>UDI scanné :</strong><br>" + scannedUDI;
 
-        addHistory(product.ref + " | LOT " + product.lot + " | GTIN " + product.gtin);
+        document.getElementById("count").innerHTML =
+            "Produit prêt à valider";
+
     }
     else{
+
+        lastProduct = null;
+
         document.getElementById("ref").innerHTML =
-            "❌ Référence non trouvée dans data.csv";
+            "❌ Référence non trouvée";
 
-        addHistory("Inconnu | " + scannedUDI);
+        document.getElementById("lot").innerHTML =
+            "<strong>LOT :</strong> " + scannedLOT;
+
+        document.getElementById("gtin").innerHTML =
+            "<strong>GTIN :</strong> " + scannedGTIN;
+
+        document.getElementById("udi").innerHTML =
+            "<strong>UDI :</strong><br>" + scannedUDI;
+
+        document.getElementById("count").innerHTML = "";
+
     }
+
 }
 
-function onScanFailure(error){
-    // Ne rien afficher, sinon ça spamme
+function validateScan(){
+
+    if(!lastProduct){
+
+        alert("Aucun produit valide.");
+
+        return;
+
+    }
+
+    const key =
+        lastProduct.ref + "|" + lastProduct.lot;
+
+    if(!counters[key]){
+
+        counters[key] = {
+
+            ref : lastProduct.ref,
+            lot : lastProduct.lot,
+            gtin : lastProduct.gtin,
+            count : 0
+
+        };
+
+    }
+
+    counters[key].count++;
+
+    document.getElementById("count").innerHTML =
+        "Quantité scannée : " +
+        counters[key].count;
+
+    refreshHistory();
+
 }
 
-function addHistory(text){
-    const div = document.createElement("div");
-    div.className = "item";
-    div.innerText = text;
-    document.getElementById("history").prepend(div);
+function refreshHistory(){
+
+    const history =
+        document.getElementById("history");
+
+    history.innerHTML = "";
+
+    Object.values(counters)
+    .sort((a,b)=>b.count-a.count)
+    .forEach(item => {
+
+        const div =
+            document.createElement("div");
+
+        div.className = "item";
+
+        div.innerHTML =
+
+            "<strong>" + item.ref + "</strong>" +
+
+            " | LOT " + item.lot +
+
+            " | GTIN " + item.gtin +
+
+            " | Quantité : <strong>" +
+
+            item.count +
+
+            "</strong>";
+
+        history.appendChild(div);
+
+    });
+
 }
 
-const scanner = new Html5QrcodeScanner("reader", {
-    fps: 10,
-    qrbox: 250
-});
+function onScanFailure(error){}
 
-scanner.render(onScanSuccess, onScanFailure);
+const scanner = new Html5QrcodeScanner(
+    "reader",
+    {
+        fps:10,
+        qrbox:250
+    }
+);
+
+scanner.render(
+    onScanSuccess,
+    onScanFailure
+);
+
 </script>
 
 </body>
