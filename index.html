@@ -2,7 +2,7 @@
 <html lang="fr">
 <head>
 <meta charset="UTF-8">
-<title>Scanner UDI Industriel - Aziz</title>
+<title>Scanner UDI Industriel Corrigé - Aziz</title>
 
 <script src="https://unpkg.com/html5-qrcode"></script>
 
@@ -10,21 +10,14 @@
 body { font-family: Arial; text-align: center; background:#f4f6f9; }
 #reader { width:320px; margin:auto; }
 .card { background:white; padding:20px; margin-top:20px; border-radius:10px; }
-button {
-    padding:10px;
-    margin:5px;
-    border:none;
-    border-radius:8px;
-    background:#2c3e50;
-    color:white;
-}
+button { padding:10px; margin:5px; border-radius:8px; border:none; background:#2c3e50; color:white; }
 .item { background:#eee; margin:5px; padding:5px; }
 </style>
 </head>
 
 <body>
 
-<h2>📷 Scanner UDI Fiable</h2>
+<h2>📷 Scanner UDI Industriel</h2>
 <p><b>Application développée par Aziz</b></p>
 
 <div id="reader"></div>
@@ -34,6 +27,7 @@ button {
 
 <div class="card" id="result" style="display:none;">
 <p id="udi"></p>
+<p id="gtin"></p>
 <p id="lot"></p>
 <h3 id="ref"></h3>
 </div>
@@ -45,80 +39,93 @@ button {
 
 <script>
 
-// ✅ BASE (NETTOYÉE)
+// ✅ BASE (AJOUT GTIN IMPORTANT)
 const database = [
-    {ref:"CP1490/XL", lot:"1912S0015"},
-    {ref:"CP1690/XL", lot:"1912S0016"},
-    {ref:"CP1870/XL", lot:"1912R0025"},
-    {ref:"CP2240/XL", lot:"1912R0026"},
-    {ref:"CP2240/XL", lot:"1912S0017"}
+    {ref:"CP1490/XL", lot:"1912S0015", gtin:"07612345678903"},
+    {ref:"CP1690/XL", lot:"1912S0016", gtin:"07612345678904"},
+    {ref:"CP1870/XL", lot:"1912R0025", gtin:"07612345678905"},
+    {ref:"CP2240/XL", lot:"1912R0026", gtin:"07612345678906"},
+    {ref:"CP2240/XL", lot:"1912S0017", gtin:"07612345678907"}
 ];
 
-// ✅ VARIABLES
 let lastScan = null;
 let scannerActive = false;
 
-// ✅ NETTOYAGE TEXTE (TRÈS IMPORTANT)
-function clean(value) {
-    return value.toString().trim().replace(/\r/g, "");
+
+// ✅ PARSER GS1 CORRECT
+function parseGS1(code) {
+
+    let result = {};
+
+    let gtin = code.match(/01(\\d{14})/);
+    let lot  = code.match(/10([A-Z0-9]+)/);
+
+    if (gtin) result.gtin = gtin[1];
+    if (lot) result.lot = lot[1];
+
+    // fallback si pas GS1
+    if (!result.lot && code.length > 9) {
+        result.lot = code.slice(-9);
+    }
+
+    return result;
 }
 
-// ✅ EXTRACTION LOT
-function extractLot(code) {
 
-    if (!code) return null;
-
-    // GS1
-    let match = code.match(/10([A-Z0-9]+)/);
-    if (match) return clean(match[1]);
-
-    // fallback
-    return clean(code.slice(-9));
-}
-
-// ✅ START SCAN
+// ✅ START
 function startScan() {
     scannerActive = true;
-    document.getElementById("result").style.display = "none";
 }
+
 
 // ✅ SCAN
 function onScanSuccess(code) {
 
     if (!scannerActive) return;
 
-    scannerActive = false; // stop scan auto
+    scannerActive = false;
 
-    let lot = extractLot(code);
-    lastScan = { code, lot };
+    let parsed = parseGS1(code);
+    lastScan = parsed;
 
     document.getElementById("result").style.display = "block";
     document.getElementById("udi").innerText = "UDI: " + code;
-    document.getElementById("lot").innerText = "LOT: " + (lot || "-");
-    document.getElementById("ref").innerText = "Scan en attente de validation...";
+    document.getElementById("gtin").innerText = "GTIN: " + (parsed.gtin || "-");
+    document.getElementById("lot").innerText = "LOT: " + (parsed.lot || "-");
+    document.getElementById("ref").innerText = "Scan en attente...";
 }
 
-// ✅ VALIDATION
+
+// ✅ VALIDATION (LOGIQUE INDUSTRIELLE)
 function validateScan() {
 
     if (!lastScan) return;
 
-    let lot = clean(lastScan.lot);
+    let product = null;
 
-    let product = database.find(p => clean(p.lot) === lot);
+    // ✅ PRIORITÉ 1 → LOT
+    if (lastScan.lot) {
+        product = database.find(p => p.lot === lastScan.lot);
+    }
+
+    // ✅ PRIORITÉ 2 → GTIN
+    if (!product && lastScan.gtin) {
+        product = database.find(p => p.gtin === lastScan.gtin);
+    }
 
     let text;
 
     if (product) {
         document.getElementById("ref").innerText = "Référence: " + product.ref;
-        text = product.ref + " | LOT: " + lot;
+        text = product.ref + " | LOT: " + (lastScan.lot || "-");
     } else {
         document.getElementById("ref").innerText = "❌ Produit non trouvé";
-        text = "Inconnu | LOT: " + lot;
+        text = "Inconnu";
     }
 
     addHistory(text);
 }
+
 
 // ✅ HISTORIQUE
 function addHistory(text) {
@@ -128,7 +135,8 @@ function addHistory(text) {
     document.getElementById("history").prepend(div);
 }
 
-// ✅ SCANNER INIT
+
+// ✅ SCANNER
 let scanner = new Html5QrcodeScanner("reader", {
     fps: 10,
     qrbox: 250,
@@ -143,3 +151,4 @@ scanner.render(onScanSuccess);
 
 </body>
 </html>
+``
