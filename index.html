@@ -6,59 +6,27 @@
 <script src="https://unpkg.com/html5-qrcode"></script>
 
 <style>
-body {
-    font-family: Arial, sans-serif;
-    text-align: center;
-    background: #f4f6f9;
-}
-#reader {
-    width: 320px;
-    margin: auto;
-}
-.card {
-    background: white;
-    max-width: 600px;
-    margin: 20px auto;
-    padding: 20px;
-    border-radius: 12px;
-}
-button {
-    padding: 10px 20px;
-    margin: 5px;
-    border: none;
-    border-radius: 8px;
-    background: #2c3e50;
-    color: white;
-    cursor: pointer;
-}
-.item {
-    background: #eee;
-    margin: 5px;
-    padding: 8px;
-    border-radius: 6px;
-}
-.result-line {
-    margin: 10px;
-    font-size: 18px;
-}
+body{font-family:Arial;text-align:center;background:#f4f6f9}
+#reader{width:320px;margin:auto}
+.card{background:white;max-width:650px;margin:20px auto;padding:20px;border-radius:12px}
+button{padding:10px 20px;margin:5px;border:none;border-radius:8px;background:#2c3e50;color:white}
+.line{font-size:18px;margin:10px}
+.item{background:#eee;margin:5px;padding:8px;border-radius:6px}
 </style>
 </head>
 
 <body>
 
 <h2>📷 Scanner UDI SoftFil</h2>
-<p><strong>Application développée par Aziz</strong></p>
 
 <div id="reader"></div>
 
-<button onclick="startScan()">▶️ Scanner</button>
-<button onclick="validateScan()">✅ Valider</button>
-
-<div class="card" id="result" style="display:none;">
-    <div class="result-line" id="ref"></div>
-    <div class="result-line" id="lot"></div>
-    <div class="result-line" id="gtin"></div>
-    <div class="result-line" id="udi"></div>
+<div class="card" id="result">
+    <div class="line" id="status">Chargement de la base...</div>
+    <div class="line" id="ref"></div>
+    <div class="line" id="lot"></div>
+    <div class="line" id="gtin"></div>
+    <div class="line" id="udi"></div>
 </div>
 
 <div class="card">
@@ -68,93 +36,108 @@ button {
 
 <script>
 let database = [];
-let lastScan = null;
-let scannerActive = false;
 
-function normalize(value) {
+function clean(value){
     return String(value || "")
+        .replace(/\u001d/g, "")
+        .replace(/[^A-Za-z0-9/]/g, "")
+        .toUpperCase()
+        .trim();
+}
+
+function cleanOnlyAlphaNum(value){
+    return String(value || "")
+        .replace(/\u001d/g, "")
         .replace(/[^A-Za-z0-9]/g, "")
         .toUpperCase()
         .trim();
 }
 
-// Extraction du GTIN = 14 chiffres après le AI 01
-function extractGTIN(udi) {
-    const clean = normalize(udi);
-    const match = clean.match(/01(\d{14})/);
-    return match ? match[1] : "Non trouvé";
+// GTIN = 14 chiffres après 01
+function extractGTIN(udi){
+    const value = cleanOnlyAlphaNum(udi);
+    const match = value.match(/01(\d{14})/);
+    return match ? match[1] : "";
 }
 
-// CSV simple : ref,lot,udi
-function parseCSVLine(line) {
-    return line.split(",").map(col =>
-        col.trim().replace(/^"|"$/g, "")
+// LOT = ce qui vient après AI 10
+function extractLOT(udi){
+    const value = cleanOnlyAlphaNum(udi);
+    const index = value.indexOf("10", 16);
+
+    if(index !== -1){
+        return value.substring(index + 2);
+    }
+
+    return "";
+}
+
+// Détection automatique du séparateur CSV
+function splitCSVLine(line){
+    let separator = ",";
+
+    if(line.includes(";")) separator = ";";
+    else if(line.includes("\t")) separator = "\t";
+
+    return line.split(separator).map(v =>
+        v.trim().replace(/^"|"$/g, "")
     );
 }
 
+// Chargement du fichier data.csv
 fetch("data.csv")
-.then(response => response.text())
+.then(response => {
+    if(!response.ok){
+        throw new Error("data.csv introuvable");
+    }
+    return response.text();
+})
 .then(text => {
     const lines = text.trim().split(/\r?\n/);
 
     database = lines.slice(1).map(line => {
-        const cols = parseCSVLine(line);
+        const cols = splitCSVLine(line);
 
         return {
-            ref: cols[0] || "",
-            lot: cols[1] || "",
-            udi: cols[2] || "",
-            gtin: extractGTIN(cols[2] || "")
+            ref: clean(cols[0]),
+            lot: cleanOnlyAlphaNum(cols[1]),
+            udi: cleanOnlyAlphaNum(cols[2]),
+            gtin: extractGTIN(cols[2])
         };
     });
 
-    console.log("Base chargée :", database);
+    document.getElementById("status").innerHTML =
+        "✅ Base chargée : " + database.length + " lignes";
+
+    console.log("BASE CSV =", database);
 })
 .catch(error => {
+    document.getElementById("status").innerHTML =
+        "❌ Erreur : impossible de charger data.csv";
     console.error(error);
-    alert("Erreur : impossible de charger data.csv");
 });
 
-function startScan() {
-    scannerActive = true;
-    lastScan = null;
+function onScanSuccess(decodedText){
+    const scannedUDI = cleanOnlyAlphaNum(decodedText);
+    const scannedGTIN = extractGTIN(scannedUDI);
+    const scannedLOT = extractLOT(scannedUDI);
 
-    document.getElementById("result").style.display = "block";
-    document.getElementById("ref").innerHTML = "";
-    document.getElementById("lot").innerHTML = "";
-    document.getElementById("gtin").innerHTML = "";
-    document.getElementById("udi").innerHTML = "Scanner prêt...";
-}
-
-function onScanSuccess(decodedText) {
-    if (!scannerActive) return;
-
-    scannerActive = false;
-    lastScan = decodedText;
-
-    document.getElementById("result").style.display = "block";
     document.getElementById("udi").innerHTML =
-        "<strong>Code scanné :</strong><br>" + decodedText;
+        "<strong>UDI scanné :</strong> " + scannedUDI;
 
-    document.getElementById("ref").innerHTML = "En attente de validation...";
-    document.getElementById("lot").innerHTML = "";
-    document.getElementById("gtin").innerHTML = "";
-}
+    document.getElementById("gtin").innerHTML =
+        "<strong>GTIN :</strong> " + (scannedGTIN || "Non trouvé");
 
-function validateScan() {
-    if (!lastScan) {
-        alert("Veuillez scanner un UDI.");
-        return;
-    }
+    document.getElementById("lot").innerHTML =
+        "<strong>LOT :</strong> " + (scannedLOT || "Non trouvé");
 
-    const scan = normalize(lastScan);
+    const product = database.find(p =>
+        p.udi === scannedUDI ||
+        p.lot === scannedLOT ||
+        p.gtin === scannedGTIN
+    );
 
-    const product = database.find(p => {
-        const dbUdi = normalize(p.udi);
-        return dbUdi === scan || scan.includes(dbUdi) || dbUdi.includes(scan);
-    });
-
-    if (product) {
+    if(product){
         document.getElementById("ref").innerHTML =
             "<strong>Référence :</strong> " + product.ref;
 
@@ -168,17 +151,20 @@ function validateScan() {
             "<strong>UDI :</strong> " + product.udi;
 
         addHistory(product.ref + " | LOT " + product.lot + " | GTIN " + product.gtin);
-    } else {
-        document.getElementById("ref").innerHTML = "❌ Produit non trouvé";
-        document.getElementById("lot").innerHTML = "";
-        document.getElementById("gtin").innerHTML =
-            "<strong>GTIN scanné :</strong> " + extractGTIN(lastScan);
+    }
+    else{
+        document.getElementById("ref").innerHTML =
+            "❌ Référence non trouvée dans data.csv";
 
-        addHistory("Inconnu | " + lastScan);
+        addHistory("Inconnu | " + scannedUDI);
     }
 }
 
-function addHistory(text) {
+function onScanFailure(error){
+    // Ne rien afficher, sinon ça spamme
+}
+
+function addHistory(text){
     const div = document.createElement("div");
     div.className = "item";
     div.innerText = text;
@@ -190,7 +176,7 @@ const scanner = new Html5QrcodeScanner("reader", {
     qrbox: 250
 });
 
-scanner.render(onScanSuccess);
+scanner.render(onScanSuccess, onScanFailure);
 </script>
 
 </body>
