@@ -2,7 +2,7 @@
 <html lang="fr">
 <head>
 <meta charset="UTF-8">
-<title>Scanner UDI Industriel FIX - Aziz</title>
+<title>Scanner UDI Base Officielle - Aziz</title>
 
 <script src="https://unpkg.com/html5-qrcode"></script>
 
@@ -17,7 +17,7 @@ button { padding:10px; margin:5px; border:none; border-radius:8px; background:#2
 
 <body>
 
-<h2>📷 Scanner UDI Industriel</h2>
+<h2>📷 Scanner UDI Officiel</h2>
 <p><b>Application développée par Aziz</b></p>
 
 <div id="reader"></div>
@@ -27,7 +27,6 @@ button { padding:10px; margin:5px; border:none; border-radius:8px; background:#2
 
 <div class="card" id="result" style="display:none;">
 <p id="udi"></p>
-<p id="gtin"></p>
 <p id="lot"></p>
 <h3 id="ref"></h3>
 </div>
@@ -39,83 +38,70 @@ button { padding:10px; margin:5px; border:none; border-radius:8px; background:#2
 
 <script>
 
-// ✅ TA BASE
+// ✅ BASE EXACTE (depuis ton Excel)
 const database = [
-    {ref:"CP1490/XL", lot:"1912S0015"},
-    {ref:"CP1690/XL", lot:"1912S0016"},
-    {ref:"CP1870/XL", lot:"1912R0025"},
-    {ref:"CP2240/XL", lot:"1912R0026"},
-    {ref:"CP2240/XL", lot:"1912S0017"}
+    {ref:"CP1490/XL", lot:"1912S0015", udi:"1117101912S0015"},
+    {ref:"CP1690/XL", lot:"1912S0016", udi:"1117101912S0016"},
+    {ref:"CP1870/XL", lot:"1912R0025", udi:"1117101912R0025"},
+    {ref:"CP2240/XL", lot:"1912R0026", udi:"1117101912R0026"},
+    {ref:"CP2240/XL", lot:"1912S0017", udi:"1117101912S0017"}
 ];
 
 let lastScan = null;
 let scannerActive = false;
 
 
-// ✅ EXTRACTION PARFAITE (INDUSTRIEL)
-function parseUDI(code) {
-
-    let result = {};
-
-    // ✅ CAS 1 : GS1 (01 + 10)
-    let gtinMatch = code.match(/01(\d{14})/);
-    let lotMatch = code.match(/10([A-Z0-9]+)/);
-
-    if (gtinMatch && lotMatch) {
-        result.gtin = gtinMatch[1];
-        result.lot = lotMatch[1];
-        return result;
-    }
-
-    // ✅ CAS 2 : FORMAT SIMPLE (TON CAS SOFTFIL)
-    if (code.length >= 9) {
-        result.lot = code.slice(-9);
-        result.gtin = code.slice(0, code.length - 9);
-    }
-
-    return result;
+// ✅ NETTOYAGE (important)
+function clean(x){
+    return x.toString().trim();
 }
 
 
 // ✅ START
-function startScan() {
+function startScan(){
     scannerActive = true;
 }
 
 
 // ✅ SCAN
-function onScanSuccess(code) {
+function onScanSuccess(code){
 
     if (!scannerActive) return;
-
     scannerActive = false;
 
-    let parsed = parseUDI(code);
-    lastScan = parsed;
+    let udi = clean(code);
+
+    lastScan = udi;
 
     document.getElementById("result").style.display = "block";
-    document.getElementById("udi").innerText = "UDI: " + code;
-    document.getElementById("gtin").innerText = "GTIN: " + (parsed.gtin || "-");
-    document.getElementById("lot").innerText = "LOT: " + (parsed.lot || "-");
+    document.getElementById("udi").innerText = "UDI: " + udi;
+    document.getElementById("lot").innerText = "";
     document.getElementById("ref").innerText = "En attente validation...";
 }
 
 
-// ✅ VALIDATION (FIABLE)
-function validateScan() {
+// ✅ VALIDATION (MATCH UDI)
+function validateScan(){
 
     if (!lastScan) return;
 
-    let product = database.find(p => p.lot === lastScan.lot);
+    let udi = clean(lastScan);
+
+    let product = database.find(p => clean(p.udi) === udi);
 
     let text;
 
-    if (product) {
+    if (product){
+        document.getElementById("lot").innerText = "LOT: " + product.lot;
         document.getElementById("ref").innerText = "✅ Référence: " + product.ref;
-        text = product.ref + " | " + lastScan.lot;
-    } else {
+
+        text = product.ref + " | " + product.lot;
+    }
+    else{
+        document.getElementById("lot").innerText = "";
         document.getElementById("ref").innerText = "❌ Produit non trouvé";
-        text = "Inconnu | " + lastScan.lot;
+
+        text = "Inconnu | " + udi;
     }
 
     addHistory(text);
@@ -123,10 +109,11 @@ function validateScan() {
 
 
 // ✅ HISTORIQUE
-function addHistory(text) {
+function addHistory(text){
     let div = document.createElement("div");
     div.className = "item";
     div.innerText = text;
+
     document.getElementById("history").prepend(div);
 }
 
@@ -144,3 +131,4 @@ scanner.render(onScanSuccess);
 
 </body>
 </html>
+``
