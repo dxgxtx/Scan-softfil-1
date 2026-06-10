@@ -2,38 +2,40 @@
 <html lang="fr">
 <head>
 <meta charset="UTF-8">
-<title>Scanner UDI Officiel - Aziz</title>
-
+<title>Scanner UDI - Aziz</title>
 <script src="https://unpkg.com/html5-qrcode"></script>
 
 <style>
 body {
-    font-family: Arial;
+    font-family: Arial, sans-serif;
     text-align: center;
     background: #f4f6f9;
 }
 #reader {
-    width: 300px;
+    width: 320px;
     margin: auto;
 }
 .card {
     background: white;
     padding: 15px;
-    margin-top: 20px;
+    margin: 20px auto;
     border-radius: 10px;
+    max-width: 420px;
 }
 button {
-    padding: 10px;
+    padding: 10px 15px;
     margin: 5px;
     border: none;
     border-radius: 8px;
     background: #2c3e50;
     color: white;
+    cursor: pointer;
 }
 .item {
     background: #eee;
     margin: 5px;
-    padding: 5px;
+    padding: 8px;
+    border-radius: 6px;
 }
 </style>
 </head>
@@ -60,99 +62,116 @@ button {
 </div>
 
 <script>
-
-// ✅ BASE CSV
 let database = [];
-
-// ✅ Charger automatiquement data.csv
-fetch("data.csv")
-.then(res => res.text())
-.then(text => {
-
-    let lines = text.split("\n");
-
-    database = lines.slice(1).map(line => {
-        let cols = line.split(",");
-
-        return {
-            ref: cols[0]?.trim(),
-            lot: cols[1]?.trim(),
-            udi: cols[2]?.trim()
-        };
-    });
-
-    console.log("✅ Base chargée", database);
-});
-
-// ✅ Variables
 let lastScan = null;
 let scannerActive = false;
 
-// ✅ Nettoyage robuste
+// Nettoyage UDI / LOT / REF
 function normalize(value) {
-    return value.replace(/[^A-Z0-9]/gi, "").trim();
+    return String(value || "")
+        .replace(/\r/g, "")
+        .replace(/\n/g, "")
+        .replace(/[^A-Za-z0-9]/g, "")
+        .toUpperCase()
+        .trim();
 }
 
-// ✅ Lancer scan
+// Lecture CSV simple
+function parseCSVLine(line) {
+    return line.split(",").map(col => col.trim().replace(/^"|"$/g, ""));
+}
+
+// Chargement data.csv
+fetch("data.csv")
+    .then(res => {
+        if (!res.ok) throw new Error("Impossible de charger data.csv");
+        return res.text();
+    })
+    .then(text => {
+        const lines = text.trim().split(/\r?\n/);
+
+        database = lines.slice(1)
+            .map(line => {
+                const cols = parseCSVLine(line);
+
+                return {
+                    ref: cols[0] || "",
+                    lot: cols[1] || "",
+                    udi: cols[2] || ""
+                };
+            })
+            .filter(p => p.udi);
+
+        console.log("Base chargée :", database);
+    })
+    .catch(error => {
+        alert("Erreur chargement data.csv : " + error.message);
+    });
+
 function startScan() {
     scannerActive = true;
-}
-
-// ✅ Scan
-function onScanSuccess(code) {
-
-    if (!scannerActive) return;
-
-    scannerActive = false;
-
-    let udi = code.trim();
-    lastScan = udi;
+    lastScan = null;
 
     document.getElementById("result").style.display = "block";
-    document.getElementById("udi").innerText = "UDI: " + udi;
-    document.getElementById("ref").innerText = "En attente validation...";
+    document.getElementById("udi").innerText = "Scanner prêt...";
+    document.getElementById("ref").innerText = "";
     document.getElementById("lot").innerText = "";
 }
 
-// ✅ Validation (match sur UDI)
+function onScanSuccess(code) {
+    if (!scannerActive) return;
+
+    scannerActive = false;
+    lastScan = code;
+
+    document.getElementById("result").style.display = "block";
+    document.getElementById("udi").innerText = "UDI scanné : " + code;
+    document.getElementById("ref").innerText = "En attente de validation...";
+    document.getElementById("lot").innerText = "";
+}
+
 function validateScan() {
+    if (!lastScan) {
+        alert("Veuillez d'abord scanner un UDI.");
+        return;
+    }
 
-    if (!lastScan) return;
+    const udiScan = normalize(lastScan);
 
-    let udiScan = normalize(lastScan);
+    const product = database.find(p => {
+        const udiDB = normalize(p.udi);
 
-    let product = database.find(p => normalize(p.udi || "") === udiScan);
+        return udiDB === udiScan ||
+               udiScan.includes(udiDB) ||
+               udiDB.includes(udiScan);
+    });
 
     if (product) {
-        document.getElementById("ref").innerText = "✅ Référence: " + product.ref;
-        document.getElementById("lot").innerText = "LOT: " + product.lot;
+        document.getElementById("ref").innerText = "✅ Référence : " + product.ref;
+        document.getElementById("lot").innerText = "LOT : " + product.lot;
 
-        addHistory(product.ref + " | " + product.lot);
+        addHistory(product.ref + " | LOT " + product.lot);
     } else {
         document.getElementById("ref").innerText = "❌ Produit non trouvé";
         document.getElementById("lot").innerText = "";
 
-        addHistory("Inconnu | " + udiScan);
+        addHistory("Inconnu | " + lastScan);
     }
 }
 
-// ✅ Historique
 function addHistory(text) {
-    let div = document.createElement("div");
+    const div = document.createElement("div");
     div.className = "item";
     div.innerText = text;
-
     document.getElementById("history").prepend(div);
 }
 
-// ✅ Scanner
-let scanner = new Html5QrcodeScanner("reader", {
+const scanner = new Html5QrcodeScanner("reader", {
     fps: 10,
     qrbox: 250
 });
 
 scanner.render(onScanSuccess);
-
 </script>
 
 </body>
