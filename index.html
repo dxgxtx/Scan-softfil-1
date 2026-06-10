@@ -2,7 +2,7 @@
 <html lang="fr">
 <head>
 <meta charset="UTF-8">
-<title>Scanner UDI Industriel Corrigé - Aziz</title>
+<title>Scanner UDI Industriel FIX - Aziz</title>
 
 <script src="https://unpkg.com/html5-qrcode"></script>
 
@@ -10,7 +10,7 @@
 body { font-family: Arial; text-align: center; background:#f4f6f9; }
 #reader { width:320px; margin:auto; }
 .card { background:white; padding:20px; margin-top:20px; border-radius:10px; }
-button { padding:10px; margin:5px; border-radius:8px; border:none; background:#2c3e50; color:white; }
+button { padding:10px; margin:5px; border:none; border-radius:8px; background:#2c3e50; color:white; }
 .item { background:#eee; margin:5px; padding:5px; }
 </style>
 </head>
@@ -39,33 +39,38 @@ button { padding:10px; margin:5px; border-radius:8px; border:none; background:#2
 
 <script>
 
-// ✅ BASE (AJOUT GTIN IMPORTANT)
+// ✅ TA BASE
 const database = [
-    {ref:"CP1490/XL", lot:"1912S0015", gtin:"07612345678903"},
-    {ref:"CP1690/XL", lot:"1912S0016", gtin:"07612345678904"},
-    {ref:"CP1870/XL", lot:"1912R0025", gtin:"07612345678905"},
-    {ref:"CP2240/XL", lot:"1912R0026", gtin:"07612345678906"},
-    {ref:"CP2240/XL", lot:"1912S0017", gtin:"07612345678907"}
+    {ref:"CP1490/XL", lot:"1912S0015"},
+    {ref:"CP1690/XL", lot:"1912S0016"},
+    {ref:"CP1870/XL", lot:"1912R0025"},
+    {ref:"CP2240/XL", lot:"1912R0026"},
+    {ref:"CP2240/XL", lot:"1912S0017"}
 ];
 
 let lastScan = null;
 let scannerActive = false;
 
 
-// ✅ PARSER GS1 CORRECT
-function parseGS1(code) {
+// ✅ EXTRACTION PARFAITE (INDUSTRIEL)
+function parseUDI(code) {
 
     let result = {};
 
-    let gtin = code.match(/01(\\d{14})/);
-    let lot  = code.match(/10([A-Z0-9]+)/);
+    // ✅ CAS 1 : GS1 (01 + 10)
+    let gtinMatch = code.match(/01(\d{14})/);
+    let lotMatch = code.match(/10([A-Z0-9]+)/);
 
-    if (gtin) result.gtin = gtin[1];
-    if (lot) result.lot = lot[1];
+    if (gtinMatch && lotMatch) {
+        result.gtin = gtinMatch[1];
+        result.lot = lotMatch[1];
+        return result;
+    }
 
-    // fallback si pas GS1
-    if (!result.lot && code.length > 9) {
+    // ✅ CAS 2 : FORMAT SIMPLE (TON CAS SOFTFIL)
+    if (code.length >= 9) {
         result.lot = code.slice(-9);
+        result.gtin = code.slice(0, code.length - 9);
     }
 
     return result;
@@ -85,42 +90,32 @@ function onScanSuccess(code) {
 
     scannerActive = false;
 
-    let parsed = parseGS1(code);
+    let parsed = parseUDI(code);
     lastScan = parsed;
 
     document.getElementById("result").style.display = "block";
     document.getElementById("udi").innerText = "UDI: " + code;
     document.getElementById("gtin").innerText = "GTIN: " + (parsed.gtin || "-");
     document.getElementById("lot").innerText = "LOT: " + (parsed.lot || "-");
-    document.getElementById("ref").innerText = "Scan en attente...";
+    document.getElementById("ref").innerText = "En attente validation...";
 }
 
 
-// ✅ VALIDATION (LOGIQUE INDUSTRIELLE)
+// ✅ VALIDATION (FIABLE)
 function validateScan() {
 
     if (!lastScan) return;
 
-    let product = null;
-
-    // ✅ PRIORITÉ 1 → LOT
-    if (lastScan.lot) {
-        product = database.find(p => p.lot === lastScan.lot);
-    }
-
-    // ✅ PRIORITÉ 2 → GTIN
-    if (!product && lastScan.gtin) {
-        product = database.find(p => p.gtin === lastScan.gtin);
-    }
+    let product = database.find(p => p.lot === lastScan.lot);
 
     let text;
 
     if (product) {
-        document.getElementById("ref").innerText = "Référence: " + product.ref;
-        text = product.ref + " | LOT: " + (lastScan.lot || "-");
+        document.getElementById("ref").innerText = "✅ Référence: " + product.ref;
+        text = product.ref + " | " + lastScan.lot;
     } else {
         document.getElementById("ref").innerText = "❌ Produit non trouvé";
-        text = "Inconnu";
+        text = "Inconnu | " + lastScan.lot;
     }
 
     addHistory(text);
@@ -140,9 +135,7 @@ function addHistory(text) {
 let scanner = new Html5QrcodeScanner("reader", {
     fps: 10,
     qrbox: 250,
-    formatsToSupport: [
-        Html5QrcodeSupportedFormats.DATA_MATRIX
-    ]
+    formatsToSupport: [Html5QrcodeSupportedFormats.DATA_MATRIX]
 });
 
 scanner.render(onScanSuccess);
@@ -151,4 +144,3 @@ scanner.render(onScanSuccess);
 
 </body>
 </html>
-``
