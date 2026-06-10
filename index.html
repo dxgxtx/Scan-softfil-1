@@ -6,28 +6,30 @@
 <script src="https://unpkg.com/html5-qrcode"></script>
 
 <style>
-
 body{
     font-family:Arial,sans-serif;
     text-align:center;
     background:#f4f6f9;
     margin:20px;
 }
-
+.logo{
+    max-width:360px;
+    width:80%;
+    margin:10px auto 20px;
+    display:block;
+}
 #reader{
     width:320px;
     margin:auto;
 }
-
 .card{
     background:white;
-    max-width:700px;
+    max-width:750px;
     margin:20px auto;
     padding:20px;
     border-radius:12px;
     box-shadow:0 2px 10px rgba(0,0,0,.1);
 }
-
 button{
     padding:12px 25px;
     margin:10px;
@@ -38,33 +40,27 @@ button{
     cursor:pointer;
     font-size:16px;
 }
-
-button:hover{
-    background:#34495e;
-}
-
 .line{
     margin:10px;
     font-size:18px;
 }
-
 .count{
     font-size:24px;
     font-weight:bold;
     color:#27ae60;
 }
-
 .item{
     background:#ecf0f1;
     margin:5px;
     padding:10px;
     border-radius:8px;
 }
-
 </style>
 </head>
 
 <body>
+
+<img src="softfil-orange.webp" class="logo" alt="SoftFil Logo">
 
 <h2>📷 Scanner UDI SoftFil</h2>
 
@@ -73,282 +69,235 @@ button:hover{
 <button onclick="validateScan()">✅ Valider</button>
 
 <div class="card">
-
-<div id="status">Chargement de la base...</div>
-
-<div class="line" id="ref"></div>
-
-<div class="line" id="lot"></div>
-
-<div class="line" id="gtin"></div>
-
-<div class="line" id="udi"></div>
-
-<div class="count" id="count"></div>
-
+    <div id="status">Chargement de la base...</div>
+    <div class="line" id="ref"></div>
+    <div class="line" id="gtin"></div>
+    <div class="line" id="lot"></div>
+    <div class="line" id="mfg"></div>
+    <div class="line" id="exp"></div>
+    <div class="line" id="udi"></div>
+    <div class="count" id="count"></div>
 </div>
 
 <div class="card">
-
-<h3>📊 Comptage</h3>
-
-<div id="history"></div>
-
+    <h3>📊 Comptage</h3>
+    <div id="history"></div>
 </div>
 
 <script>
-
 let database = [];
 let lastProduct = null;
 let counters = {};
 
 function clean(value){
-
     return String(value || "")
         .replace(/\u001d/g,"")
         .replace(/[^A-Za-z0-9\/]/g,"")
         .toUpperCase()
         .trim();
-
 }
 
 function cleanAlpha(value){
-
     return String(value || "")
         .replace(/\u001d/g,"")
         .replace(/[^A-Za-z0-9]/g,"")
         .toUpperCase()
         .trim();
+}
 
+function formatDateYYMMDD(value){
+    if(!value || value.length !== 6) return "";
+    const yy = value.substring(0,2);
+    const mm = value.substring(2,4);
+    const dd = value.substring(4,6);
+    return dd + "/" + mm + "/20" + yy;
 }
 
 function extractGTIN(udi){
-
     const value = cleanAlpha(udi);
-
     const match = value.match(/01(\d{14})/);
-
     return match ? match[1] : "";
+}
 
+function extractDateFabrication(udi){
+    const value = cleanAlpha(udi);
+    const match = value.match(/11(\d{6})/);
+    return match ? formatDateYYMMDD(match[1]) : "";
+}
+
+function extractDateExpiration(udi){
+    const value = cleanAlpha(udi);
+    const match = value.match(/17(\d{6})/);
+    return match ? formatDateYYMMDD(match[1]) : "";
 }
 
 function extractLOT(udi){
-
     const value = cleanAlpha(udi);
 
-    const pos10 = value.indexOf("10",16);
+    const pos10 = value.indexOf("10");
+    if(pos10 === -1) return "";
 
-    if(pos10 !== -1){
+    let after10 = value.substring(pos10 + 2);
 
-        return value.substring(pos10 + 2);
-
-    }
-
-    return "";
-
+    // LOT SoftFil = format type 2307W0277 = 9 caractères
+    return after10.substring(0,9);
 }
 
 function splitCSV(line){
+    let sep = ",";
+    if(line.includes(";")) sep = ";";
+    if(line.includes("\t")) sep = "\t";
 
-    let sep=",";
-
-    if(line.includes(";")) sep=";";
-    if(line.includes("\t")) sep="\t";
-
-    return line.split(sep)
-        .map(x => x.trim().replace(/^"|"$/g,""));
-
+    return line.split(sep).map(x =>
+        x.trim().replace(/^"|"$/g,"")
+    );
 }
 
 fetch("data.csv")
 .then(r => r.text())
 .then(text => {
-
     const lines = text.trim().split(/\r?\n/);
 
     database = lines.slice(1).map(line => {
-
         const cols = splitCSV(line);
 
         return {
-
             ref : clean(cols[0]),
             lot : cleanAlpha(cols[1]),
             udi : cleanAlpha(cols[2])
-
         };
-
     });
 
     document.getElementById("status").innerHTML =
         "✅ Base chargée : " + database.length + " références";
-
-    console.log(database);
-
 })
 .catch(error => {
-
     document.getElementById("status").innerHTML =
         "❌ Impossible de charger data.csv";
-
     console.error(error);
-
 });
 
 function onScanSuccess(decodedText){
-
     const scannedUDI = cleanAlpha(decodedText);
-
-    const scannedGTIN = extractGTIN(scannedUDI);
-
-    const scannedLOT = extractLOT(scannedUDI);
+    const scannedGTIN = extractGTIN(decodedText);
+    const scannedLOT = extractLOT(decodedText);
+    const scannedMFG = extractDateFabrication(decodedText);
+    const scannedEXP = extractDateExpiration(decodedText);
 
     const product = database.find(p =>
-
-        p.lot === scannedLOT
-
-        ||
-
+        p.lot === scannedLOT ||
         cleanAlpha(p.udi).includes(scannedLOT)
-
     );
 
     if(product){
-
         lastProduct = {
-
             ref : product.ref,
             lot : scannedLOT,
             gtin : scannedGTIN,
+            mfg : scannedMFG,
+            exp : scannedEXP,
             udi : scannedUDI
-
         };
 
         document.getElementById("ref").innerHTML =
             "<strong>Référence :</strong> " + product.ref;
 
+        document.getElementById("gtin").innerHTML =
+            "<strong>GTIN :</strong> " + scannedGTIN;
+
         document.getElementById("lot").innerHTML =
             "<strong>LOT :</strong> " + scannedLOT;
 
-        document.getElementById("gtin").innerHTML =
-            "<strong>GTIN :</strong> " + scannedGTIN;
+        document.getElementById("mfg").innerHTML =
+            "<strong>Date de fabrication :</strong> " + scannedMFG;
+
+        document.getElementById("exp").innerHTML =
+            "<strong>Date de péremption :</strong> " + scannedEXP;
 
         document.getElementById("udi").innerHTML =
             "<strong>UDI scanné :</strong><br>" + scannedUDI;
 
         document.getElementById("count").innerHTML =
             "Produit prêt à valider";
-
     }
     else{
-
         lastProduct = null;
 
         document.getElementById("ref").innerHTML =
             "❌ Référence non trouvée";
 
-        document.getElementById("lot").innerHTML =
-            "<strong>LOT :</strong> " + scannedLOT;
-
         document.getElementById("gtin").innerHTML =
             "<strong>GTIN :</strong> " + scannedGTIN;
 
+        document.getElementById("lot").innerHTML =
+            "<strong>LOT :</strong> " + scannedLOT;
+
+        document.getElementById("mfg").innerHTML =
+            "<strong>Date de fabrication :</strong> " + scannedMFG;
+
+        document.getElementById("exp").innerHTML =
+            "<strong>Date de péremption :</strong> " + scannedEXP;
+
         document.getElementById("udi").innerHTML =
-            "<strong>UDI :</strong><br>" + scannedUDI;
+            "<strong>UDI scanné :</strong><br>" + scannedUDI;
 
         document.getElementById("count").innerHTML = "";
-
     }
-
 }
 
 function validateScan(){
-
     if(!lastProduct){
-
         alert("Aucun produit valide.");
-
         return;
-
     }
 
-    const key =
-        lastProduct.ref + "|" + lastProduct.lot;
+    const key = lastProduct.ref + "|" + lastProduct.lot;
 
     if(!counters[key]){
-
         counters[key] = {
-
             ref : lastProduct.ref,
             lot : lastProduct.lot,
             gtin : lastProduct.gtin,
+            exp : lastProduct.exp,
             count : 0
-
         };
-
     }
 
     counters[key].count++;
 
     document.getElementById("count").innerHTML =
-        "Quantité scannée : " +
-        counters[key].count;
+        "Quantité scannée : " + counters[key].count;
 
     refreshHistory();
-
 }
 
 function refreshHistory(){
-
-    const history =
-        document.getElementById("history");
-
+    const history = document.getElementById("history");
     history.innerHTML = "";
 
-    Object.values(counters)
-    .sort((a,b)=>b.count-a.count)
-    .forEach(item => {
-
-        const div =
-            document.createElement("div");
-
+    Object.values(counters).forEach(item => {
+        const div = document.createElement("div");
         div.className = "item";
 
         div.innerHTML =
-
             "<strong>" + item.ref + "</strong>" +
-
             " | LOT " + item.lot +
-
             " | GTIN " + item.gtin +
-
-            " | Quantité : <strong>" +
-
-            item.count +
-
-            "</strong>";
+            " | EXP " + item.exp +
+            " | Quantité : <strong>" + item.count + "</strong>";
 
         history.appendChild(div);
-
     });
-
 }
 
 function onScanFailure(error){}
 
-const scanner = new Html5QrcodeScanner(
-    "reader",
-    {
-        fps:10,
-        qrbox:250
-    }
-);
+const scanner = new Html5QrcodeScanner("reader", {
+    fps:10,
+    qrbox:250
+});
 
-scanner.render(
-    onScanSuccess,
-    onScanFailure
-);
-
+scanner.render(onScanSuccess,onScanFailure);
 </script>
 
 </body>
