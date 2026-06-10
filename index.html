@@ -2,7 +2,7 @@
 <html lang="fr">
 <head>
 <meta charset="UTF-8">
-<title>Scanner UDI - Aziz</title>
+<title>Scanner UDI SoftFil</title>
 <script src="https://unpkg.com/html5-qrcode"></script>
 
 <style>
@@ -17,13 +17,13 @@ body {
 }
 .card {
     background: white;
-    padding: 15px;
+    max-width: 600px;
     margin: 20px auto;
-    border-radius: 10px;
-    max-width: 420px;
+    padding: 20px;
+    border-radius: 12px;
 }
 button {
-    padding: 10px 15px;
+    padding: 10px 20px;
     margin: 5px;
     border: none;
     border-radius: 8px;
@@ -37,12 +37,16 @@ button {
     padding: 8px;
     border-radius: 6px;
 }
+.result-line {
+    margin: 10px;
+    font-size: 18px;
+}
 </style>
 </head>
 
 <body>
 
-<h2>📷 Scanner UDI</h2>
+<h2>📷 Scanner UDI SoftFil</h2>
 <p><strong>Application développée par Aziz</strong></p>
 
 <div id="reader"></div>
@@ -51,9 +55,10 @@ button {
 <button onclick="validateScan()">✅ Valider</button>
 
 <div class="card" id="result" style="display:none;">
-    <p id="udi"></p>
-    <h3 id="ref"></h3>
-    <p id="lot"></p>
+    <div class="result-line" id="ref"></div>
+    <div class="result-line" id="lot"></div>
+    <div class="result-line" id="gtin"></div>
+    <div class="result-line" id="udi"></div>
 </div>
 
 <div class="card">
@@ -66,94 +71,108 @@ let database = [];
 let lastScan = null;
 let scannerActive = false;
 
-// Nettoyage UDI / LOT / REF
 function normalize(value) {
     return String(value || "")
-        .replace(/\r/g, "")
-        .replace(/\n/g, "")
         .replace(/[^A-Za-z0-9]/g, "")
         .toUpperCase()
         .trim();
 }
 
-// Lecture CSV simple
-function parseCSVLine(line) {
-    return line.split(",").map(col => col.trim().replace(/^"|"$/g, ""));
+// Extraction du GTIN = 14 chiffres après le AI 01
+function extractGTIN(udi) {
+    const clean = normalize(udi);
+    const match = clean.match(/01(\d{14})/);
+    return match ? match[1] : "Non trouvé";
 }
 
-// Chargement data.csv
+// CSV simple : ref,lot,udi
+function parseCSVLine(line) {
+    return line.split(",").map(col =>
+        col.trim().replace(/^"|"$/g, "")
+    );
+}
+
 fetch("data.csv")
-    .then(res => {
-        if (!res.ok) throw new Error("Impossible de charger data.csv");
-        return res.text();
-    })
-    .then(text => {
-        const lines = text.trim().split(/\r?\n/);
+.then(response => response.text())
+.then(text => {
+    const lines = text.trim().split(/\r?\n/);
 
-        database = lines.slice(1)
-            .map(line => {
-                const cols = parseCSVLine(line);
+    database = lines.slice(1).map(line => {
+        const cols = parseCSVLine(line);
 
-                return {
-                    ref: cols[0] || "",
-                    lot: cols[1] || "",
-                    udi: cols[2] || ""
-                };
-            })
-            .filter(p => p.udi);
-
-        console.log("Base chargée :", database);
-    })
-    .catch(error => {
-        alert("Erreur chargement data.csv : " + error.message);
+        return {
+            ref: cols[0] || "",
+            lot: cols[1] || "",
+            udi: cols[2] || "",
+            gtin: extractGTIN(cols[2] || "")
+        };
     });
+
+    console.log("Base chargée :", database);
+})
+.catch(error => {
+    console.error(error);
+    alert("Erreur : impossible de charger data.csv");
+});
 
 function startScan() {
     scannerActive = true;
     lastScan = null;
 
     document.getElementById("result").style.display = "block";
-    document.getElementById("udi").innerText = "Scanner prêt...";
-    document.getElementById("ref").innerText = "";
-    document.getElementById("lot").innerText = "";
+    document.getElementById("ref").innerHTML = "";
+    document.getElementById("lot").innerHTML = "";
+    document.getElementById("gtin").innerHTML = "";
+    document.getElementById("udi").innerHTML = "Scanner prêt...";
 }
 
-function onScanSuccess(code) {
+function onScanSuccess(decodedText) {
     if (!scannerActive) return;
 
     scannerActive = false;
-    lastScan = code;
+    lastScan = decodedText;
 
     document.getElementById("result").style.display = "block";
-    document.getElementById("udi").innerText = "UDI scanné : " + code;
-    document.getElementById("ref").innerText = "En attente de validation...";
-    document.getElementById("lot").innerText = "";
+    document.getElementById("udi").innerHTML =
+        "<strong>Code scanné :</strong><br>" + decodedText;
+
+    document.getElementById("ref").innerHTML = "En attente de validation...";
+    document.getElementById("lot").innerHTML = "";
+    document.getElementById("gtin").innerHTML = "";
 }
 
 function validateScan() {
     if (!lastScan) {
-        alert("Veuillez d'abord scanner un UDI.");
+        alert("Veuillez scanner un UDI.");
         return;
     }
 
-    const udiScan = normalize(lastScan);
+    const scan = normalize(lastScan);
 
     const product = database.find(p => {
-        const udiDB = normalize(p.udi);
-
-        return udiDB === udiScan ||
-               udiScan.includes(udiDB) ||
-               udiDB.includes(udiScan);
+        const dbUdi = normalize(p.udi);
+        return dbUdi === scan || scan.includes(dbUdi) || dbUdi.includes(scan);
     });
 
     if (product) {
-        document.getElementById("ref").innerText = "✅ Référence : " + product.ref;
-        document.getElementById("lot").innerText = "LOT : " + product.lot;
+        document.getElementById("ref").innerHTML =
+            "<strong>Référence :</strong> " + product.ref;
 
-        addHistory(product.ref + " | LOT " + product.lot);
+        document.getElementById("lot").innerHTML =
+            "<strong>LOT :</strong> " + product.lot;
+
+        document.getElementById("gtin").innerHTML =
+            "<strong>GTIN :</strong> " + product.gtin;
+
+        document.getElementById("udi").innerHTML =
+            "<strong>UDI :</strong> " + product.udi;
+
+        addHistory(product.ref + " | LOT " + product.lot + " | GTIN " + product.gtin);
     } else {
-        document.getElementById("ref").innerText = "❌ Produit non trouvé";
-        document.getElementById("lot").innerText = "";
+        document.getElementById("ref").innerHTML = "❌ Produit non trouvé";
+        document.getElementById("lot").innerHTML = "";
+        document.getElementById("gtin").innerHTML =
+            "<strong>GTIN scanné :</strong> " + extractGTIN(lastScan);
 
         addHistory("Inconnu | " + lastScan);
     }
