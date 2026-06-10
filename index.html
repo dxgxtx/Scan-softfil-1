@@ -2,45 +2,29 @@
 <html lang="fr">
 <head>
 <meta charset="UTF-8">
-<title>Scanner UDI Fiable - Aziz</title>
+<title>Scanner UDI FIABLE - Aziz</title>
 
 <script src="https://unpkg.com/html5-qrcode"></script>
 
 <style>
-body {
-    font-family: Arial;
-    text-align: center;
-    background: #f4f6f9;
-}
-#reader {
-    width: 320px;
-    margin: auto;
-}
-.card {
-    background: white;
-    padding: 20px;
-    margin-top: 20px;
-    border-radius: 10px;
-}
-.item {
-    background:#eee;
-    margin:5px;
-    padding:5px;
-}
+body { font-family: Arial; text-align: center; background:#f4f6f9; }
+#reader { width:320px; margin:auto; }
+.card { background:white; padding:20px; margin-top:20px; border-radius:10px; }
+.item { background:#eee; margin:5px; padding:5px; }
 </style>
 </head>
 
 <body>
 
-<h2>📷 Scanner UDI Fiable (9 derniers caractères)</h2>
-<p><strong>Application développée par Aziz</strong></p>
+<h2>📷 Scanner UDI Fiable</h2>
+<p><b>Application développée par Aziz</b></p>
 
 <div id="reader"></div>
 
 <div class="card" id="result" style="display:none;">
-    <p id="udi"></p>
-    <p id="lot"></p>
-    <h3 id="ref"></h3>
+<p id="udi"></p>
+<p id="lot"></p>
+<h3 id="ref"></h3>
 </div>
 
 <div class="card">
@@ -50,7 +34,7 @@ body {
 
 <script>
 
-// ✅ BASE (issue Excel)
+// ✅ BASE (TON EXCEL)
 const database = [
     {ref:"CP1490/XL", lot:"1912S0015"},
     {ref:"CP1690/XL", lot:"1912S0016"},
@@ -59,9 +43,16 @@ const database = [
     {ref:"CP2240/XL", lot:"1912S0017"}
 ];
 
-// ✅ EXTRACTION LOT = 9 DERNIERS CARACTÈRES
+// ✅ EXTRACTION INTELLIGENTE
 function extractLot(code) {
-    if (!code || code.length < 9) return null;
+
+    if (!code) return null;
+
+    // ✅ CAS 1 : GS1 avec (10)
+    let match = code.match(/10([A-Z0-9]+)/);
+    if (match) return match[1];
+
+    // ✅ CAS 2 : fallback → 9 derniers caractères
     return code.slice(-9);
 }
 
@@ -76,22 +67,24 @@ function addHistory(text) {
 // ✅ SCAN
 function onScanSuccess(code) {
 
+    console.log("Scan:", code);
+
     let lot = extractLot(code);
 
     let product = database.find(p => p.lot === lot);
 
     document.getElementById("result").style.display = "block";
     document.getElementById("udi").innerText = "UDI: " + code;
-    document.getElementById("lot").innerText = "LOT extrait: " + (lot || "-");
+    document.getElementById("lot").innerText = "LOT: " + (lot || "-");
 
     let text;
 
     if (product) {
         document.getElementById("ref").innerText = "Référence: " + product.ref;
-        text = product.ref + " | " + lot;
+        text = product.ref + " | LOT: " + lot;
     } else {
         document.getElementById("ref").innerText = "Produit non trouvé";
-        text = "Inconnu | " + lot;
+        text = "Inconnu | LOT: " + lot;
     }
 
     addHistory(text);
@@ -102,8 +95,7 @@ let scanner = new Html5QrcodeScanner("reader", {
     fps: 10,
     qrbox: 250,
     formatsToSupport: [
-        Html5QrcodeSupportedFormats.DATA_MATRIX,
-        Html5QrcodeSupportedFormats.QR_CODE
+        Html5QrcodeSupportedFormats.DATA_MATRIX
     ]
 });
 
